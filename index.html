@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ScanLab — film strip correction &amp; contact sheets</title>
+<meta name="referrer" content="no-referrer">
+<style>
+  :root { --bg:#111; --card:#1b1b1b; --fg:#e8e8e8; --muted:#9a9a9a; --accent:#e0b04a; --ok:#6cc070; --bad:#e06060; --border:#2c2c2c; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+  header { display:flex; align-items:center; gap:14px; padding:16px 24px; border-bottom:1px solid var(--border); }
+  header h1 { font-size:20px; margin:0; letter-spacing:.5px; }
+  header h1 span { color:var(--accent); }
+  header .sp { flex:1; }
+  main { max-width:1200px; margin:0 auto; padding:20px 24px 60px; display:grid; gap:18px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px 18px; }
+  .card h2 { font-size:14px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); margin:0 0 10px; }
+  #drop { border:2px dashed #444; border-radius:12px; padding:34px; text-align:center; color:var(--muted); transition:.15s; }
+  #drop.over { border-color:var(--accent); color:var(--fg); background:#1f1b12; }
+  #drop strong { color:var(--fg); }
+  button, .btn { background:#2a2a2a; color:var(--fg); border:1px solid #3a3a3a; border-radius:8px; padding:8px 14px; font:inherit; cursor:pointer; }
+  button:hover { border-color:#555; }
+  button.primary { background:var(--accent); color:#111; border-color:var(--accent); font-weight:600; }
+  button:disabled { opacity:.45; cursor:default; }
+  input[type=text], input[type=password], textarea { background:#121212; color:var(--fg); border:1px solid #333; border-radius:8px; padding:8px 10px; font:inherit; width:100%; }
+  label.f { display:grid; gap:4px; font-size:13px; color:var(--muted); }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .grid2 { display:grid; grid-template-columns: 2fr 2fr 1fr auto; gap:10px; align-items:end; }
+  @media (max-width: 800px) { .grid2 { grid-template-columns: 1fr; } }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--border); vertical-align:top; }
+  th { color:var(--muted); font-weight:500; }
+  .pill { display:inline-block; padding:1px 8px; border-radius:999px; font-size:12px; background:#2a2a2a; }
+  .pill.bw { background:#333; } .pill.col { background:#3a2a40; }
+  .ok { color:var(--ok); } .bad { color:var(--bad); } .muted { color:var(--muted); }
+  #sheets { display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:16px; }
+  .sheet { background:#151515; border:1px solid var(--border); border-radius:10px; padding:10px; }
+  .sheet img { width:100%; display:block; border-radius:4px; background:#000; cursor:zoom-in; }
+  .sheet .t { display:flex; justify-content:space-between; margin:8px 2px 2px; font-size:13px; }
+  #log { font:12px/1.5 ui-monospace, Menlo, Consolas, monospace; color:var(--muted); max-height:180px; overflow:auto; white-space:pre-wrap; }
+  progress { width:100%; height:8px; accent-color: var(--accent); }
+  dialog { background:#000; border:0; padding:0; max-width:96vw; max-height:96vh; }
+  dialog img { max-width:96vw; max-height:96vh; display:block; }
+  dialog::backdrop { background:rgba(0,0,0,.85); }
+  .dot { width:10px; height:10px; border-radius:50%; background:#555; display:inline-block; margin-right:6px; }
+  .dot.ok { background:var(--ok); } .dot.bad { background:var(--bad); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Scan<span>Lab</span></h1>
+  <span class="muted">Film-strip black point / colour correction + 8×10 contact sheets — processed on this computer</span>
+  <span class="sp"></span>
+  <span id="connState" class="muted"><span class="dot"></span>Hermes: not checked</span>
+</header>
+<main>
+  <section class="card">
+    <h2>Hermes connection</h2>
+    <div class="grid2">
+      <label class="f">Hermes URL (Tailscale)<input id="url" type="text" placeholder="https://db-digital-pc.tail5ed18a.ts.net"></label>
+      <label class="f">API key<input id="key" type="password" placeholder="sl_…" autocomplete="off"></label>
+      <label class="f">Station name<input id="station" type="text" placeholder="Scanning Mac"></label>
+      <button id="test">Save &amp; test</button>
+    </div>
+    <p class="muted" style="margin:8px 0 0;font-size:12px">The key is stored only in this browser. Images never leave this computer — Hermes only receives a short job report.</p>
+  </section>
+
+  <section class="card">
+    <h2>1 · Load scans</h2>
+    <div id="drop">
+      <p><strong>Drop a scan folder here</strong> (e.g. <code>Contact_Scans</code> or one <code>ContactSheet_XX</code> folder) — or individual strip images.</p>
+      <p>Each sub-folder becomes one contact sheet.</p>
+      <div class="row" style="justify-content:center;margin-top:12px">
+        <label class="btn">Choose folder…<input id="pickDir" type="file" webkitdirectory multiple hidden></label>
+        <label class="btn">Choose images…<input id="pickFiles" type="file" accept="image/*,.jpg,.jpeg,.png,.tif,.tiff" multiple hidden></label>
+        <button id="clear">Clear</button>
+      </div>
+    </div>
+    <div id="queue" style="margin-top:12px"></div>
+  </section>
+
+  <section class="card">
+    <h2>2 · Process</h2>
+    <div class="row">
+      <button id="run" class="primary" disabled>Correct &amp; build contact sheets</button>
+      <label class="row" style="gap:6px"><input id="notify" type="checkbox" checked> Notify Hermes</label>
+      <span class="sp" style="flex:1"></span>
+      <button id="zip" disabled>Download all (.zip)</button>
+      <button id="saveDir" disabled hidden>Save into folder…</button>
+    </div>
+    <label class="f" style="margin-top:10px">Note for Hermes (optional)<textarea id="note" rows="2" placeholder="e.g. Roll 12 — Kodak Safety, client: Smith"></textarea></label>
+    <progress id="prog" value="0" max="1" style="margin-top:12px"></progress>
+    <div id="log"></div>
+  </section>
+
+  <section class="card">
+    <h2>3 · Results</h2>
+    <div id="sheets"><p class="muted">Nothing processed yet.</p></div>
+    <div id="detail" style="margin-top:14px"></div>
+  </section>
+</main>
+<dialog id="zoom"><img alt=""></dialog>
+
+<script src="core.js"></script>
+<script>
+'use strict';
+const C = window.ScanCore;
+const $ = (s) => document.querySelector(s);
+const IMG_RE = /\.(jpe?g|png|tiff?)$/i, SKIP_RE = /_(corrected|ContactSheet)\.(jpe?g|png|tiff?)$/i;
+const DEFAULT_URL = 'https://db-digital-pc.tail5ed18a.ts.net';
+let groups = new Map();   // sheetName -> [{file, rel}]
+let results = [];         // [{name, files:[{path, blob}], sheetUrl, report}]
+
+// ---------- settings ----------
+const store = { get: (k, d = '') => localStorage.getItem('scanlab.' + k) ?? d, set: (k, v) => localStorage.setItem('scanlab.' + k, v) };
+$('#url').value = store.get('url', DEFAULT_URL);
+$('#key').value = store.get('key');
+$('#station').value = store.get('station', 'Scanning Mac');
+const apiBase = () => $('#url').value.trim().replace(/\/+$/, '');
+function setConn(state, text) {
+  $('#connState').innerHTML = `<span class="dot ${state}"></span>${text}`;
+}
+async function ping() {
+  if (!$('#key').value.trim()) { setConn('bad', 'Hermes: no API key'); return false; }
+  try {
+    const r = await fetch(apiBase() + '/api/ping', { headers: { Authorization: 'Bearer ' + $('#key').value.trim() } });
+    if (r.ok) { setConn('ok', 'Hermes: connected'); return true; }
+    setConn('bad', r.status === 401 ? 'Hermes: wrong API key' : 'Hermes: error ' + r.status); return false;
+  } catch (e) { setConn('bad', 'Hermes: unreachable (Tailscale on?)'); return false; }
+}
+$('#test').onclick = () => { store.set('url', apiBase()); store.set('key', $('#key').value.trim()); store.set('station', $('#station').value.trim()); ping(); };
+if (store.get('key')) ping();
+
+// ---------- loading ----------
+function log(msg, cls = '') { const d = document.createElement('div'); if (cls) d.className = cls; d.textContent = msg; $('#log').appendChild(d); $('#log').scrollTop = 1e9; }
+function addFile(file, rel) {
+  rel = (rel || file.webkitRelativePath || file.name).replace(/^\/+/, '');
+  if (!IMG_RE.test(file.name) || SKIP_RE.test(file.name) || file.name.startsWith('.')) return;
+  const parts = rel.split('/');
+  const sheet = parts.length >= 2 ? parts[parts.length - 2] : 'ContactSheet';
+  if (!groups.has(sheet)) groups.set(sheet, []);
+  const g = groups.get(sheet);
+  if (!g.some((x) => x.rel === rel)) g.push({ file, rel });
+}
+function renderQueue() {
+  const names = [...groups.keys()].sort();
+  for (const n of names) groups.get(n).sort((a, b) => a.rel.localeCompare(b.rel));
+  $('#run').disabled = !names.length;
+  $('#queue').innerHTML = names.length ? `<table><tr><th>Contact sheet</th><th>Strips</th></tr>${names.map((n) =>
+    `<tr><td>${esc(n)}</td><td>${groups.get(n).map((x) => esc(x.file.name)).join('<br>')}</td></tr>`).join('')}</table>` : '';
+}
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+async function readEntry(entry, path) {
+  if (entry.isFile) {
+    const file = await new Promise((res, rej) => entry.file(res, rej));
+    addFile(file, path + entry.name);
+  } else if (entry.isDirectory) {
+    const reader = entry.createReader();
+    let batch;
+    do {
+      batch = await new Promise((res, rej) => reader.readEntries(res, rej));
+      for (const e of batch) await readEntry(e, path + entry.name + '/');
+    } while (batch.length);
+  }
+}
+const drop = $('#drop');
+['dragenter', 'dragover'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, () => drop.classList.remove('over')));
+drop.addEventListener('drop', async (e) => {
+  e.preventDefault();
+  const entries = [...e.dataTransfer.items].map((i) => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  if (entries.length) for (const en of entries) await readEntry(en, '');
+  else for (const f of e.dataTransfer.files) addFile(f);
+  renderQueue();
+});
+$('#pickDir').onchange = (e) => { for (const f of e.target.files) addFile(f); e.target.value = ''; renderQueue(); };
+$('#pickFiles').onchange = (e) => { for (const f of e.target.files) addFile(f, f.name); e.target.value = ''; renderQueue(); };
+$('#clear').onclick = () => { groups = new Map(); renderQueue(); };
+
+// ---------- image helpers ----------
+async function decode(file) {
+  const bmp = await createImageBitmap(file);
+  const cv = new OffscreenCanvasOr(bmp.width, bmp.height), ctx = cv.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(bmp, 0, 0); bmp.close && bmp.close();
+  return ctx.getImageData(0, 0, cv.width, cv.height);
+}
+function OffscreenCanvasOr(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+function toCanvas(img) {
+  const cv = OffscreenCanvasOr(img.width, img.height);
+  cv.getContext('2d').putImageData(new ImageData(img.data, img.width, img.height), 0, 0);
+  return cv;
+}
+async function jpegBlob(canvas, dpi) {
+  const blob = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', 0.98));
+  const bytes = C.setJpegDpi(new Uint8Array(await blob.arrayBuffer()), dpi);
+  return new Blob([bytes], { type: 'image/jpeg' });
+}
+async function maxSpread(blob) {    // re-decode the saved JPEG; B&W must be R=G=B everywhere
+  const id = await decode(blob); let m = 0; const d = id.data;
+  for (let i = 0; i < d.length; i += 4) { const s = Math.max(d[i], d[i + 1], d[i + 2]) - Math.min(d[i], d[i + 1], d[i + 2]); if (s > m) m = s; }
+  return m;
+}
+const tick = () => new Promise((r) => setTimeout(r, 0));
+const base = (n) => n.replace(/\.[^.]+$/, '');
+
+function buildSheet(name, canvases) {
+  const L = C.sheetLayout(canvases.map((c) => ({ w: c.width, h: c.height })));
+  const cv = OffscreenCanvasOr(L.printW, L.printH), ctx = cv.getContext('2d');
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  const [dx, dy] = L.dest;
+  canvases.forEach((c, i) => {
+    const [px, py] = L.pos[i];
+    ctx.drawImage(c, dx + px * L.scale, dy + py * L.scale, c.width * L.scale, c.height * L.scale);
+  });
+  ctx.fillStyle = 'rgb(200,200,200)'; ctx.textBaseline = 'top';
+  ctx.font = '48px Helvetica, Arial, sans-serif';
+  ctx.fillText(name.replace(/_/g, ' '), L.label[0], L.label[1]);
+  return cv;
+}
+
+// ---------- run ----------
+$('#run').onclick = async () => {
+  $('#run').disabled = true; $('#zip').disabled = true; $('#saveDir').disabled = true;
+  $('#log').innerHTML = ''; results = [];
+  $('#sheets').innerHTML = ''; $('#detail').innerHTML = '';
+  const t0 = performance.now();
+  const names = [...groups.keys()].sort();
+  const total = names.reduce((a, n) => a + groups.get(n).length, 0); let done = 0;
+  $('#prog').max = total + names.length; $('#prog').value = 0;
+  for (const name of names) {
+    const res = { name, files: [], strips: [] }; const canvases = []; let allBW = true;
+    for (const { file } of groups.get(name)) {
+      log(`${name}/${file.name} …`);
+      await tick();
+      let r;
+      try { r = C.correctStrip(await decode(file)); }
+      catch (e) { log(`  ✗ could not read ${file.name}: ${e.message || e}`, 'bad'); continue; }
+      const cv = toCanvas(r.img); canvases.push(cv); allBW = allBW && r.bw;
+      const out = base(file.name) + '_corrected.jpg';
+      const blob = await jpegBlob(cv, C.P.STRIP_DPI);
+      let spread = null; if (r.bw) spread = await maxSpread(blob);
+      res.files.push({ path: `${name}/${out}`, blob });
+      res.strips.push({ file: file.name, out, bw: r.bw, size: [r.img.width, r.img.height], frames: r.frames.map(({ box, ...f }) => f), sat0: r.bw ? spread === 0 : null });
+      const desc = r.bw ? r.frames.map((f) => `B${f.black}/W${f.white}`).join(' ') : r.frames.map((f) => `gain ${f.gain || '-'} γ ${f.gamma || '-'}`).join(' | ');
+      log(`  ✓ ${r.bw ? 'B&W' : 'colour'} · ${r.frames.length} frames · ${desc}${r.bw ? (spread === 0 ? ' · saturation 0 ✓' : ` · ⚠ max RGB spread ${spread}`) : ''}`, r.frames.length ? '' : 'bad');
+      $('#prog').value = ++done;
+    }
+    if (!canvases.length) continue;
+    await tick();
+    const sheet = buildSheet(name, canvases);
+    const sheetName = `${name}_ContactSheet.jpg`;
+    const sblob = await jpegBlob(sheet, C.P.PRINT_DPI);
+    res.files.push({ path: `${name}/${sheetName}`, blob: sblob });
+    res.sheet = sheetName; res.sheetPx = [sheet.width, sheet.height];
+    res.sheetUrl = URL.createObjectURL(sblob);
+    if (allBW) res.sheetSat0 = (await maxSpread(sblob)) === 0;
+    log(`  ▣ ${sheetName} · ${sheet.width}×${sheet.height} px @ ${C.P.PRINT_DPI} dpi = ${sheet.width / C.P.PRINT_DPI}×${sheet.height / C.P.PRINT_DPI} in${allBW ? (res.sheetSat0 ? ' · saturation 0 ✓' : ' · ⚠ not pure grey') : ''}`, 'ok');
+    $('#prog').value = ++done;
+    results.push(res); renderResults();
+  }
+  const secs = ((performance.now() - t0) / 1000).toFixed(1);
+  log(`Done: ${results.length} sheet(s) in ${secs} s`, 'ok');
+  $('#run').disabled = false; $('#zip').disabled = !results.length;
+  $('#saveDir').disabled = !results.length;
+  if ($('#notify').checked && results.length) report(secs);
+};
+
+async function report(secs) {
+  const key = $('#key').value.trim(); if (!key) { log('Hermes not notified (no API key)', 'bad'); return; }
+  const job = {
+    job_id: 'job-' + Date.now(), client: $('#station').value.trim() || 'remote', seconds: +secs,
+    note: $('#note').value.trim(), app: 'ScanLab web 1.0', user_agent: navigator.userAgent,
+    sheets: results.map((r) => ({ name: r.name, sheet: r.sheet, sheet_px: r.sheetPx, sheet_sat0: r.sheetSat0 ?? null, strips: r.strips })),
+  };
+  try {
+    const r = await fetch(apiBase() + '/api/job', { method: 'POST', headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' }, body: JSON.stringify(job) });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok) { log(j.notified ? 'Hermes notified ✓' : 'Hermes received the report (WhatsApp delivery queued)', 'ok'); setConn('ok', 'Hermes: connected'); }
+    else log(`Hermes report failed: ${r.status} ${j.error || ''}`, 'bad');
+  } catch (e) { log('Hermes unreachable — files are still ready to download', 'bad'); setConn('bad', 'Hermes: unreachable'); }
+}
+
+function renderResults() {
+  $('#sheets').innerHTML = results.map((r, i) => `<div class="sheet"><img src="${r.sheetUrl}" data-i="${i}" alt="${esc(r.name)}">
+    <div class="t"><b>${esc(r.name)}</b><span class="muted">${r.strips.length} strips</span></div>
+    <div class="row" style="gap:6px;margin-top:6px"><a class="btn" download="${esc(r.sheet)}" href="${r.sheetUrl}">Sheet</a>
+    <button data-zip="${i}">Folder .zip</button></div></div>`).join('');
+  $('#sheets').querySelectorAll('img').forEach((im) => im.onclick = () => { $('#zoom img').src = im.src; $('#zoom').showModal(); });
+  $('#sheets').querySelectorAll('[data-zip]').forEach((b) => b.onclick = () => downloadZip([results[+b.dataset.zip]], results[+b.dataset.zip].name));
+  $('#detail').innerHTML = `<table><tr><th>Sheet</th><th>Strip</th><th>Type</th><th>Frames</th><th>Per-frame correction</th></tr>${
+    results.flatMap((r) => r.strips.map((s) => `<tr><td>${esc(r.name)}</td><td>${esc(s.file)}</td>
+      <td><span class="pill ${s.bw ? 'bw' : 'col'}">${s.bw ? 'B&amp;W' : 'colour'}</span>${s.bw ? (s.sat0 ? ' <span class="ok">sat 0</span>' : ' <span class="bad">sat≠0</span>') : ''}</td>
+      <td>${s.frames.length || '<span class="bad">none found</span>'}</td>
+      <td class="muted">${s.bw ? s.frames.map((f) => `B${f.black}/W${f.white}`).join(', ') : s.frames.map((f) => `gain ${f.gain || '–'} · γ ${f.gamma || '–'}`).join('<br>')}</td></tr>`)).join('')}</table>`;
+}
+$('#zoom').onclick = () => $('#zoom').close();
+
+// ---------- outputs ----------
+const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(u8) { let c = 0xffffffff; for (let i = 0; i < u8.length; i++) c = CRC[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; }
+async function makeZip(files) {           // store-only ZIP (JPEGs don't compress further)
+  const enc = new TextEncoder(), parts = [], central = []; let off = 0;
+  const d = new Date(), dt = ((d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1)), dd = (((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate());
+  for (const f of files) {
+    const data = new Uint8Array(await f.blob.arrayBuffer()), name = enc.encode(f.path), crc = crc32(data);
+    const h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true);
+    h.setUint16(10, dt, true); h.setUint16(12, dd, true); h.setUint32(14, crc, true); h.setUint32(18, data.length, true);
+    h.setUint32(22, data.length, true); h.setUint16(26, name.length, true); h.setUint16(28, 0, true);
+    parts.push(h, name, data);
+    const c = new DataView(new ArrayBuffer(46));
+    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true);
+    c.setUint16(10, 0, true); c.setUint16(12, dt, true); c.setUint16(14, dd, true); c.setUint32(16, crc, true);
+    c.setUint32(20, data.length, true); c.setUint32(24, data.length, true); c.setUint16(28, name.length, true);
+    c.setUint32(42, off, true);
+    central.push(c, name); off += 30 + name.length + data.length;
+  }
+  const csize = central.reduce((a, p) => a + p.byteLength, 0), e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true);
+  e.setUint32(12, csize, true); e.setUint32(16, off, true);
+  return new Blob([...parts, ...central, e], { type: 'application/zip' });
+}
+async function downloadZip(rs, name) {
+  const zip = await makeZip(rs.flatMap((r) => r.files));
+  const a = document.createElement('a'); a.href = URL.createObjectURL(zip); a.download = name + '.zip'; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+}
+$('#zip').onclick = () => downloadZip(results, results.length === 1 ? results[0].name : 'ScanLab_' + new Date().toISOString().slice(0, 10));
+
+// Chrome/Edge: write straight back into the scan folder (pick the folder that holds the ContactSheet_XX folders, or the sheet folder itself)
+if (window.showDirectoryPicker) {
+  $('#saveDir').hidden = false;
+  $('#saveDir').onclick = async () => {
+    let dir; try { dir = await window.showDirectoryPicker({ mode: 'readwrite', id: 'scanlab' }); } catch { return; }
+    let n = 0;
+    for (const r of results) {
+      const target = dir.name === r.name ? dir : await dir.getDirectoryHandle(r.name, { create: true });
+      for (const f of r.files) {
+        const fh = await target.getFileHandle(f.path.split('/').pop(), { create: true });
+        const w = await fh.createWritable(); await w.write(f.blob); await w.close(); n++;
+      }
+    }
+    log(`Saved ${n} file(s) into “${dir.name}”`, 'ok');
+  };
+}
+</script>
+</body>
+</html>
