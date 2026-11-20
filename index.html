@@ -127,7 +127,7 @@ async function ping() {
     const r = await fetch(apiBase() + '/api/ping', { headers: { Authorization: 'Bearer ' + $('#key').value.trim() } });
     if (r.ok) { setConn('ok', 'Hermes: connected'); return true; }
     setConn('bad', r.status === 401 ? 'Hermes: wrong API key' : 'Hermes: error ' + r.status); return false;
-  } catch (e) { setConn('bad', 'Hermes: unreachable (Tailscale on?)'); return false; }
+  } catch (e) { setConn('bad', 'Hermes: unreachable'); log('Hermes unreachable. Check: Tailscale is connected on this computer; in Chrome/Edge allow "local network access" for this site when prompted (or use Safari).', 'bad'); return false; }
 }
 $('#test').onclick = () => { store.set('url', apiBase()); store.set('key', $('#key').value.trim()); store.set('station', $('#station').value.trim()); ping(); };
 if (store.get('key')) ping();
